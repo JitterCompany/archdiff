@@ -1,0 +1,75 @@
+name: archdiff
+description: Architecture-level diff of a pull request, uploaded as an HTML page and linked from a PR comment.
+
+inputs:
+  site:
+    description: Host that serves the pages, e.g. archdiff.example.com
+    required: true
+  name:
+    description: Directory for this repo on the host; pages land in /<name>/pr-<number>/
+    required: true
+  upload-key:
+    description: Private SSH key that may rsync into /<name> on the host
+    required: true
+  known-hosts:
+    description: known_hosts line(s) for the host
+    required: true
+  upload-user:
+    description: SSH user on the host
+    default: archdiff-upload
+
+runs:
+  using: composite
+  steps:
+    - name: Generate
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        PR: ${{ github.event.pull_request.number }}
+        TITLE: ${{ github.event.pull_request.title }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SITE: ${{ inputs.site }}
+        NAME: ${{ inputs.name }}
+      run: |
+        base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+        mkdir -p "$RUNNER_TEMP/archdiff"
+        python3 -m archdiff "$base" "$HEAD_SHA" \
+          --title "#$PR $TITLE" \
+          --out "$RUNNER_TEMP/archdiff/index.html" \
+          --summary "$RUNNER_TEMP/archdiff-summary.md" \
+          --link "https://$SITE/$NAME/pr-$PR/"
+
+    - name: Upload
+      shell: bash
+      env:
+        PR: ${{ github.event.pull_request.number }}
+        SITE: ${{ inputs.site }}
+        USER_: ${{ inputs.upload-user }}
+        KEY: ${{ inputs.upload-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        key="$RUNNER_TEMP/archdiff-key"
+        printf '%s\n' "$KEY" > "$key"
+        chmod 600 "$key"
+        printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/archdiff-known-hosts"
+        rsync -a --delete \
+          -e "ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/archdiff-known-hosts" \
+          "$RUNNER_TEMP/archdiff/" "$USER_@$SITE:pr-$PR/"
+        rm -f "$key"
+
+    - name: Comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ github.event.pull_request.number }}
+      run: |
+        marker='<!-- archdiff -->'
+        body="$(printf '%s\n%s' "$marker" "$(cat "$RUNNER_TEMP/archdiff-summary.md")")"
+        id="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)"
+        if [ -n "$id" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+        else
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+        fi

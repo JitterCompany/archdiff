@@ -5,7 +5,9 @@ so a bump can be diffed without network access. In CI, `cargo fetch` fills
 the same cache; a base rev that is missing there is fetched into it.
 """
 
+import os
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -13,6 +15,8 @@ from .gitio import Git
 from .mapping import collapse
 
 CARGO_DB = Path.home() / ".cargo" / "git" / "db"
+# Our own bare clones, for machines without a cargo cache (e.g. a clean CI runner).
+CLONE_CACHE = Path(os.environ.get("ARCHDIFF_DEP_CACHE", Path.home() / ".cache" / "archdiff" / "deps"))
 DEF_KEYWORDS = r"(?:fn|struct|enum|trait|type|const|static|mod|macro_rules!)"
 
 
@@ -40,8 +44,13 @@ def git_deps(files):
 
 
 def find_db(repo, url, revs):
-    """Bare clone in the cargo cache that has all of revs; fetches missing revs once."""
-    dbs = sorted(CARGO_DB.glob(repo.lower() + "-*"))
+    """Bare clone that has all of revs: cargo's cache first, else our own clone.
+    Missing revs are fetched once."""
+    own = CLONE_CACHE / repo.lower()
+    if not own.exists() and not list(CARGO_DB.glob(repo.lower() + "-*")):
+        own.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "--quiet", "--bare", url, str(own)], capture_output=True)
+    dbs = sorted(CARGO_DB.glob(repo.lower() + "-*")) + ([own] if own.exists() else [])
     for db in dbs:
         g = Git(None, git_dir=db)
         missing = [r for r in revs if not g.ok("cat-file", "-e", f"{r}^{{commit}}")]

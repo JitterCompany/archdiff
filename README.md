@@ -17,6 +17,33 @@ Python 3.11+, standard library only. The page loads Mermaid from a CDN.
 
 Git dependencies (`git = ...` in Cargo.toml) are read from cargo's cache in `~/.cargo/git/db`. Run `cargo fetch` first. A base rev that is missing is fetched into that cache.
 
+## In CI
+
+The repo is also a GitHub Action. It generates the page for a pull request, rsyncs it to a host and posts (or updates) one PR comment with the summary and the link. The tag in `uses:` pins the tool version.
+
+```yaml
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  archdiff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: JitterCompany/archdiff@v0.1.0
+        with:
+          site: archdiff.example.com
+          name: my-repo
+          upload-key: ${{ secrets.ARCHDIFF_UPLOAD_KEY }}
+          known-hosts: ${{ secrets.ARCHDIFF_KNOWN_HOSTS }}
+```
+
+Private git dependencies need SSH access in the job, for example with `webfactory/ssh-agent` before the archdiff step. The host side (nginx, GitHub login, upload key restricted with rrsync) is a separate setup.
+
 ## Config
 
 `archdiff.toml` in the repo root. All keys are optional.
