@@ -19,7 +19,7 @@ Git dependencies (`git = ...` in Cargo.toml) are read from cargo's cache in `~/.
 
 ## In CI
 
-The repo is also a GitHub Action. It generates the page for a pull request, rsyncs it to a host and posts (or updates) one PR comment with the summary and the link. The tag in `uses:` pins the tool version.
+The repo is also a GitHub Action. It generates the page for a pull request, rsyncs it to your host and posts (or updates) one PR comment with the summary and the link. The tag in `uses:` pins the tool version.
 
 ```yaml
 on:
@@ -27,9 +27,13 @@ on:
 permissions:
   contents: read
   pull-requests: write
+concurrency:
+  group: archdiff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   archdiff:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository  # forks get no secrets
     steps:
       - uses: actions/checkout@v6
         with:
@@ -42,7 +46,10 @@ jobs:
           known-hosts: ${{ secrets.ARCHDIFF_KNOWN_HOSTS }}
 ```
 
-Private git dependencies need SSH access in the job, for example with `webfactory/ssh-agent` before the archdiff step. The host side (nginx, GitHub login, upload key restricted with rrsync) is a separate setup.
+The host (nginx, GitHub login, upload key restricted with rrsync) is in [`host/`](host/).
+
+- [docs/setup.md](docs/setup.md): the full walk-through, from config to the first PR comment, with troubleshooting.
+- [docs/faq.md](docs/faq.md): how it decides what to show, and why the setup looks the way it does.
 
 ## Config
 

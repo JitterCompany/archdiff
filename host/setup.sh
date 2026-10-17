@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Set up the archdiff page host on a Debian/Ubuntu VPS. Run as root, from this folder:
-#   sudo ./setup.sh archdiff.jitter.nl admin@example.com
+#   sudo ./setup.sh archdiff.example.com admin@example.com
 # Safe to re-run: it overwrites its own config files and keeps the uploaded pages.
 set -euo pipefail
 

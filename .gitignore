@@ -1,2 +1,4 @@
 __pycache__/
 *.egg-info/
+# Upload keys and known_hosts files made while following docs/setup.md
+/archdiff-*
