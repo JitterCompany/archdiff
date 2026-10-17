@@ -1,0 +1,25 @@
+[Unit]
+Description=oauth2-proxy for archdiff (GitHub login)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=oauth2-proxy
+EnvironmentFile=/etc/archdiff/oauth2-proxy.env
+ExecStart=/usr/local/bin/oauth2-proxy \
+  --provider=github \
+  --http-address=127.0.0.1:4180 \
+  --reverse-proxy=true \
+  --email-domain=* \
+  --cookie-secure=true \
+  --cookie-expire=168h \
+  --skip-provider-button=true \
+  --upstream=static://202
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
