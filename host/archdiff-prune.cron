@@ -1,0 +1,2 @@
+# Remove PR pages untouched for 180 days.
+17 3 * * * archdiff-upload find /srv/archdiff -mindepth 2 -maxdepth 2 -type d -name 'pr-*' -mtime +180 -exec rm -r {} +
