@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Diff</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #ffffff; --ink: #1d1f23; --muted: #6b6f76; --line: #e4e2dd;
+    --add: #1f9d55; --del: #d64545; --chg: #d98a1c; --accent: #3b6fd8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --panel: #1e2126; --ink: #e8e6e1; --muted: #9a9ea6; --line: #30343b;
+      --add: #3ec27a; --del: #f06a6a; --chg: #f0a742; --accent: #7aa2f7;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .app { display: grid; grid-template-columns: 360px 1fr; min-height: 100vh; }
+  aside { border-right: 1px solid var(--line); background: var(--panel); padding: 18px 16px; overflow: auto; max-height: 100vh; position: sticky; top: 0; }
+  main { padding: 16px; overflow: auto; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  .headline { border-left: 3px solid var(--accent); padding: 8px 10px; background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 0 6px 6px 0; margin-top: 14px; }
+  .headline b { display: block; margin-bottom: 4px; }
+  .headline ul { margin: 0; padding-left: 16px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .mv { color: var(--accent); }
+  .lib { color: #8b5cf6; }
+  .libbox { border: 1px dashed #8b5cf6; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+  .libbox ul.plain { max-height: 160px; overflow: auto; }
+  .add { color: var(--add); } .del { color: var(--del); } .chg { color: var(--chg); }
+  ul.plain { list-style: none; margin: 0; padding: 0; }
+  ul.plain li { padding: 2px 0; font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  .tree li { cursor: pointer; display: flex; gap: 6px; align-items: baseline; }
+  .tree li:hover { color: var(--accent); }
+  .tree .tw { width: 12px; color: var(--muted); flex: none; }
+  .tree .ct { margin-left: auto; color: var(--muted); flex: none; }
+  .tree li.sel { color: var(--accent); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12px; }
+  .controls input[type=range] { width: 110px; }
+  button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 300px; }
+  #diagram { overflow: auto; }
+  #diagram svg { max-width: none !important; height: auto; }
+  #diagram g.node, #diagram g.cluster { cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin: 10px 2px 0; }
+  .legend span::before { content: ""; display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
+  .legend .l-add::before { border-color: var(--add); } .legend .l-del::before { border-color: var(--del); border-top-style: dashed; }
+  .legend .l-mv::before { width: 12px; height: 10px; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+  .legend .l-lib::before { width: 12px; height: 10px; border: 2px dashed #8b5cf6; }
+  .legend .l-task::before { width: 16px; height: 10px; border: 2px solid var(--muted); border-radius: 6px; }
+  .legend .l-queue::before { width: 16px; height: 10px; border: 2px solid var(--muted); transform: skewX(-20deg); }
+  .legend .l-msg::before { width: 16px; height: 10px; border: 3px solid #d98a1c; transform: skewX(-20deg); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 14px; font-size: 13px; }
+  .tabs button.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+  #sysDot:not(:empty) { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--chg); vertical-align: middle; }
+  table.types { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 4px; }
+  table.types td:first-child { width: 42%; }
+  table.types td { padding: 3px 4px; border-top: 1px solid var(--line); vertical-align: top; font-family: ui-monospace, monospace; word-break: break-word; }
+  .legend .l-res::before { width: 14px; height: 10px; border: 2px solid #8b5cf6; border-radius: 3px; }
+  select { font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .legend .l-same::before { border-color: var(--muted); border-top-width: 1px; }
+  pre { white-space: pre-wrap; font-size: 11px; background: var(--bg); padding: 8px; border-radius: 6px; border: 1px solid var(--line); max-height: 240px; overflow: auto; }
+  .detail { font-size: 12px; }
+  .detail .path { font-family: ui-monospace, monospace; font-weight: 600; word-break: break-all; }
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1 id="title"></h1>
+    <div class="sub" id="revs"></div>
+    <div id="sysSide" hidden>
+      <div class="headline" id="sysHeadline"></div>
+      <h2>Selected</h2>
+      <div class="detail" id="sysDetail"><span class="sub">Click a task or a queue.</span></div>
+    </div>
+    <div id="codeSide">
+    <div class="headline" id="headline"></div>
+    <h2>External libraries</h2>
+    <div id="libs"></div>
+    <h2>Contract changes</h2>
+    <ul class="plain" id="contracts"></ul>
+    <h2>Changed units</h2>
+    <ul class="plain tree" id="tree"></ul>
+    <h2>Selected</h2>
+    <div class="detail" id="detail"><span class="sub">Click a node or a tree item.</span></div>
+    <h2>Not in the map</h2>
+    <ul class="plain" id="other"></ul>
+    </div>
+  </aside>
+  <main>
+    <div class="tabs"><button data-tab="code" class="on">Code</button><button data-tab="system">System <span id="sysDot"></span></button></div>
+    <div class="controls" id="sysCtl" hidden>
+      <label>App <select id="sysApp"></select></label>
+      <label><input type="checkbox" id="sysSpawn" checked> spawns</label>
+      <label><input type="checkbox" id="sysLonely"> unconnected</label>
+      <label><input type="checkbox" id="sysPanic"> panic hooks</label>
+      <label><input type="checkbox" id="sysStores"> infrastructure</label>
+      <button id="sysSrc">Mermaid source</button>
+    </div>
+    <div class="legend" id="sysLegend" hidden><span class="l-task">task (p = priority, ⚡ = interrupt)</span><span class="l-queue">queue (capacity · message type)</span><span class="l-msg">message type changed</span><span class="l-res">shared resource</span><span class="l-add">new connection</span><span class="l-del">removed connection</span></div>
+    <div id="codeCtl">
+    <div class="controls">
+      <button id="auto">Auto zoom</button>
+      <button id="l0">System only</button>
+      <label>Node budget <input type="range" id="budget" min="6" max="40" value="18"> <span id="budgetv">18</span></label>
+      <label><input type="checkbox" id="same" checked> unchanged edges</label>
+      <button id="src">Mermaid source</button>
+    </div>
+    <div class="legend"><span class="l-add">new dependency</span><span class="l-del">removed dependency</span><span class="l-mv">moved unit (blue box)</span><span class="l-lib">git dependency (dashed purple)</span><span class="l-same">existing (label = +added/−removed underneath)</span></div>
+    </div>
+    <div id="diagram" style="margin-top:10px"></div>
+    <pre id="mmd" hidden></pre>
+  </main>
+</div>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs";
+import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.3/dist/mermaid-layout-elk.esm.min.mjs";
+
+const D = /*DATA*/null;
+const LEVELS = ["system", "container", "module", "unit", "unit", "unit", "unit"];
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.registerLayoutLoaders(elkLayouts);
+mermaid.initialize({ startOnLoad: false, securityLevel: "loose", theme: dark ? "dark" : "neutral", layout: "elk",
+  flowchart: { htmlLabels: true, curve: "basis" }, elk: { nodePlacementStrategy: "BRANDES_KOEPF" } });
+
+// ---------- tree ----------
+const nodes = new Map();
+function node(path) {
+  if (nodes.has(path)) return nodes.get(path);
+  const parts = path ? path.split("/") : [];
+  const n = { path, name: parts.at(-1) ?? "", depth: parts.length, children: [], churn: 0, add: 0, del: 0,
+    files: [], contracts: [], status: null, edgeTouch: 0 };
+  nodes.set(path, n);
+  if (path) {
+    const parent = node(parts.slice(0, -1).join("/"));
+    n.parent = parent;
+    parent.children.push(n);
+  }
+  return n;
+}
+const root = node("");
+const isExt = (p) => p.startsWith("ext:");
+const usedExt = new Set(D.edges.flatMap((e) => [e.from, e.to]).filter(isExt));
+for (const p of D.nodes) node(p);
+for (const p of usedExt) node(p);
+// A unit that is both a file and a parent (foo.rs + foo/) gets an explicit child for its own code.
+const SELF = "/=";
+const parentsWithOwn = new Set([...D.nodes, ...Object.keys(D.changes)].filter((p) => nodes.get(p)?.children.length));
+for (const p of parentsWithOwn) node(p + SELF).name = D.file_names[p] ?? D.changes[p]?.files[0]?.path.split("/").at(-1) ?? p.split("/").at(-1);
+const own = (p) => (parentsWithOwn.has(p) ? p + SELF : p);
+for (const e of D.edges) { e.from = own(e.from); e.to = own(e.to); }
+for (const c of D.contracts) if (c.node) c.node = own(c.node);
+for (const [p, c] of Object.entries(D.changes)) {
+  const n = node(own(p));
+  n.files = c.files;
+  for (let a = n; a; a = a.parent) { a.add += c.add; a.del += c.del; a.churn += c.add + c.del + (c.add + c.del === 0 ? 1 : 0); }
+}
+for (const p of D.added) node(p).status = "add";
+for (const p of D.removed) node(p).status = "del";
+for (const p of D.moved) if (nodes.has(own(p)) && !nodes.get(own(p)).status) nodes.get(own(p)).status = "move";
+for (const p of parentsWithOwn) if (nodes.get(p).status) nodes.get(p + SELF).status = nodes.get(p).status;
+const disp = (p) => (p.endsWith(SELF) ? p.slice(0, -SELF.length) + "/" + nodes.get(p).name : p);
+for (const c of D.contracts) if (c.node) for (let a = node(c.node); a; a = a.parent) a.contracts.push(c);
+const changedEdges = D.edges.filter((e) => e.s !== "same");
+for (const e of changedEdges) for (const p of [e.from, e.to]) for (let a = node(p); a; a = a.parent) a.edgeTouch++;
+const interesting = (n) => n.churn > 0 || n.contracts.length > 0 || n.edgeTouch > 0 || n.status;
+const ancestors = (p) => { const out = []; for (let a = node(p); a && a !== root; a = a.parent) out.push(a); return out; };
+const libOf = new Map(D.libs.map((l) => [l.repo, l]));
+const short = (r) => (r ?? "none").slice(0, 7);
+const revLabel = (l) => (l.base === l.head ? `@${short(l.head)}` : `@${short(l.base)} → ${short(l.head)}`);
+const label = (n) => n.depth === 1 ? (D.systems[n.path] ?? n.path) + (libOf.has(n.path) ? ` <small>${revLabel(libOf.get(n.path))}</small>` : "") : n.name;
+
+// ---------- view state: set of expanded paths ----------
+let expanded = new Set([""]);
+let budget = 18;
+let selected = null;
+
+// Children shown individually when n is expanded; the rest collapse into one "more" node.
+const MAX_CHILDREN = 6;
+const weight = (n) => 100 * n.contracts.length + 50 * n.edgeTouch + n.churn + (n.status ? 200 : 0);
+const shownCache = new Map();
+function shownChildren(n) {
+  if (n === root) return n.children.filter((c) => !isExt(c.path) || usedExt.has(c.path));
+  if (!shownCache.has(n)) {
+    const ranked = n.children.filter(interesting).sort((a, b) => weight(b) - weight(a));
+    shownCache.set(n, ranked.slice(0, MAX_CHILDREN));
+  }
+  return shownCache.get(n);
+}
+const moreId = (n) => n.path + "/…";
+function hasMore(n) { return n !== root && shownChildren(n).length < n.children.length; }
+
+function frontier(exp = expanded) {
+  const out = [];
+  (function walk(n) {
+    for (const c of shownChildren(n)) exp.has(c.path) && c.children.length ? walk(c) : out.push(c.path);
+    if (hasMore(n)) out.push(moreId(n));
+  })(root);
+  return out;
+}
+
+// Map a logical path to the visible node that contains it.
+function visibleOf(path, exp = expanded) {
+  const chain = ancestors(path).reverse();
+  for (const a of chain) {
+    const parent = a.parent;
+    if (parent !== root && !shownChildren(parent).includes(a)) return moreId(parent);
+    if (!exp.has(a.path) || !a.children.length) return a.path;
+  }
+  return path;
+}
+
+function aggregate(exp = expanded) {
+  const m = new Map();
+  for (const e of D.edges) {
+    const a = visibleOf(e.from, exp), b = visibleOf(e.to, exp);
+    if (a === b) continue;
+    const k = a + "\u0000" + b;
+    const g = m.get(k) ?? { from: a, to: b, add: 0, del: 0, same: 0 };
+    g[e.s]++;
+    m.set(k, g);
+  }
+  for (const g of m.values()) g.s = g.same ? "same" : g.add && !g.del ? "add" : g.del && !g.add ? "del" : g.add || g.del ? "rewire" : "same";
+  return [...m.values()];
+}
+
+// ---------- level selection ----------
+// Score: how much new structural information expanding n would reveal.
+function score(n) {
+  if (!n.children.length || !interesting(n)) return 0;
+  const probe = new Set(expanded); probe.add(n.path);
+  const inside = (p) => p === n.path || p.startsWith(n.path + "/");
+  let structural = 0;
+  for (const g of aggregate(probe)) if ((g.s === "add" || g.s === "del") && (inside(g.from) || inside(g.to))) structural++;
+  return 10 * structural + 4 * n.contracts.length + Math.log2(1 + n.churn);
+}
+
+function expandChain(n, exp) {
+  exp.add(n.path);
+  const sc = shownChildren(n);
+  if (sc.length === 1 && !hasMore(n) && sc[0].children.length) expandChain(sc[0], exp);
+}
+
+function autoZoom() {
+  expanded = new Set([""]);
+  for (;;) {
+    const visible = frontier();
+    const cands = visible.map((p) => nodes.get(p)).filter((n) => n && n.children.length)
+      .map((n) => ({ n, s: score(n) })).filter((c) => c.s > 0).sort((a, b) => b.s - a.s);
+    let done = true;
+    for (const { n } of cands) {
+      const probe = new Set(expanded); expandChain(n, probe);
+      if (frontier(probe).filter((p) => !p.endsWith("/…")).length <= budget) { expanded = probe; done = false; break; }
+    }
+    if (done) return;
+  }
+}
+
+function headline() {
+  // Smallest depth at which an added or removed edge exists between distinct units.
+  const maxDepth = Math.max(...[...nodes.values()].map((n) => n.depth));
+  for (let d = 1; d <= maxDepth; d++) {
+    const cut = (p) => p.split("/").slice(0, d).join("/");
+    const m = new Map();
+    for (const e of D.edges) {
+      const a = cut(e.from), b = cut(e.to);
+      if (a === b || a.startsWith(b + "/") || b.startsWith(a + "/")) continue;
+      const k = a + "\u0000" + b, g = m.get(k) ?? { a, b, add: 0, del: 0, same: 0 };
+      g[e.s]++; m.set(k, g);
+    }
+    const hits = [...m.values()].filter((g) => !g.same && (g.add || g.del));
+    if (hits.length) return { level: d - 1, hits };
+  }
+  return null;
+}
+
+// ---------- render ----------
+const ids = new Map(); const byId = new Map();
+const idOf = (p) => { if (!ids.has(p)) { const id = "n" + ids.size; ids.set(p, id); byId.set(id, p); } return ids.get(p); };
+const esc = (s) => s.replace(/"/g, "#quot;").replace(/</g, "#lt;").replace(/>/g, "#gt;");
+const fmt = (n) => (n.add || n.del ? ` <small>+${n.add} −${n.del}</small>` : "");
+
+function mermaidSource(withSame) {
+  const L = ["flowchart LR"]; const cls = [];
+  const shownEdges = visibleEdges(withSame);
+  const edgeEnds = new Set(shownEdges.flatMap((g) => [g.from, g.to]));
+  function nodeLine(p, indent) {
+    const id = idOf(p);
+    if (p.endsWith("/…")) {
+      const parent = nodes.get(p.slice(0, -2));
+      if (!edgeEnds.has(p)) return;
+      const hidden = parent.children.filter((c) => !shownChildren(parent).includes(c));
+      const k = hidden.filter(interesting).length;
+      L.push(`${indent}${id}["${hidden.length} more${k ? ` (${k} changed)` : ""}"]`); cls.push(`class ${id} more`); return;
+    }
+    const n = nodes.get(p);
+    const c = n.contracts.length ? ` <small>◆${n.contracts.length}</small>` : "";
+    const text = (libOf.has(n.path) ? label(n) : esc(label(n))) + fmt(n) + c;
+    L.push(isExt(p) ? `${indent}${id}[("${text}")]` : `${indent}${id}["${text}"]`);
+    if (libOf.has(p)) { cls.push(`class ${id} lib${n.churn ? "chg" : ""}`); return; }
+    cls.push(`class ${id} ${n.status === "add" ? "added" : n.status === "del" ? "removed" : n.status === "move" ? "moved" : n.churn ? "changed" : "plain"}`);
+  }
+  (function walk(n, indent) {
+    for (const c of shownChildren(n)) {
+      if (expanded.has(c.path) && c.children.length) {
+        const id = idOf(c.path);
+        L.push(`${indent}subgraph ${id}["${libOf.has(c.path) ? label(c) : esc(label(c))}${fmt(c)}"]`);
+        walk(c, indent + "  ");
+        L.push(`${indent}end`);
+        cls.push(`class ${id} ${libOf.has(c.path) ? "glib" : c.status === "add" ? "gadded" : "group"}`);
+      } else nodeLine(c.path, indent);
+    }
+    if (hasMore(n)) nodeLine(moreId(n), indent);
+  })(root, "  ");
+  const styles = [];
+  let i = 0;
+  for (const g of shownEdges) {
+    const lbl = g.s === "same" && (g.add || g.del) ? `|"+${g.add}/−${g.del}"|` : "";
+    L.push(`  ${idOf(g.from)} -->${lbl} ${idOf(g.to)}`);
+    styles.push(g.s === "add" ? `linkStyle ${i} stroke:#1f9d55,stroke-width:3px`
+      : g.s === "del" ? `linkStyle ${i} stroke:#d64545,stroke-width:3px,stroke-dasharray:6 4`
+      : g.s === "rewire" ? `linkStyle ${i} stroke:#d98a1c,stroke-width:2px`
+      : `linkStyle ${i} stroke:#9a9ea6,stroke-width:1px`);
+    i++;
+  }
+  L.push("  classDef plain fill:#9a9ea61a,stroke:#9a9ea6,color:inherit");
+  L.push("  classDef changed fill:#d98a1c33,stroke:#d98a1c,stroke-width:2px");
+  L.push("  classDef added fill:#1f9d5533,stroke:#1f9d55,stroke-width:2px");
+  L.push("  classDef removed fill:#d6454522,stroke:#d64545,stroke-width:2px,stroke-dasharray:5 3");
+  L.push("  classDef lib fill:#8b5cf61a,stroke:#8b5cf6,stroke-dasharray:6 3");
+  L.push("  classDef libchg fill:#8b5cf633,stroke:#8b5cf6,stroke-width:2px,stroke-dasharray:6 3");
+  L.push("  classDef glib fill:#8b5cf60d,stroke:#8b5cf6,stroke-dasharray:6 3");
+  L.push("  classDef moved fill:#3b6fd826,stroke:#3b6fd8,stroke-width:2px");
+  L.push("  classDef more fill:transparent,stroke:#9a9ea6,stroke-dasharray:3 3,color:#9a9ea6");
+  L.push("  classDef group fill:#9a9ea60d,stroke:#9a9ea6");
+  L.push("  classDef gadded fill:#1f9d550d,stroke:#1f9d55,stroke-width:2px");
+  return [...L, ...cls.map((c) => "  " + c), ...styles.map((s) => "  " + s)].join("\n");
+}
+
+function visibleEdges(withSame) {
+  const visible = new Set(frontier());
+  const touched = (p) => { const n = nodes.get(p); return n && interesting(n); };
+  return aggregate().filter((g) => {
+    if (!visible.has(g.from) || !visible.has(g.to)) return false;
+    if (g.s !== "same") return true;
+    const systems = !g.from.includes("/") && !g.to.includes("/");
+    return withSame && (g.add || g.del || systems || (touched(g.from) && touched(g.to)));
+  });
+}
+
+let renderSeq = 0;
+let tab = "code";
+async function render() {
+  if (tab === "system") return renderSystem();
+  const src = mermaidSource(document.getElementById("same").checked);
+  document.getElementById("mmd").textContent = src;
+  const { svg, bindFunctions } = await mermaid.render("m" + ++renderSeq, src);
+  const el = document.getElementById("diagram");
+  el.innerHTML = svg;
+  bindFunctions?.(el);
+  el.querySelectorAll("g.node, g.cluster").forEach((g) => {
+    const m = (g.id || "").match(/(?:^|[-_])(n\d+)(?:[-_]|$)/) || (g.id || "").match(/^(n\d+)$/);
+    const path = m && byId.get(m[1]);
+    if (path == null) return;
+    g.addEventListener("click", (ev) => { ev.stopPropagation(); path.startsWith("sys:") ? selectSys(path.slice(4)) : toggle(path); });
+  });
+  renderTree();
+}
+
+function toggle(path) {
+  if (path.endsWith("/…")) { select(path.slice(0, -2)); return; }
+  const n = nodes.get(path);
+  select(path);
+  if (!n.children.length) return render();
+  if (expanded.has(path)) { for (const p of [...expanded]) if (p === path || p.startsWith(path + "/")) expanded.delete(p); }
+  else expandChain(n, expanded);
+  render();
+}
+
+// ---------- side panel ----------
+function select(path) {
+  selected = path;
+  const n = nodes.get(path);
+  const el = document.getElementById("detail");
+  const inside = (p) => p === path || p.startsWith(path + "/");
+  const edges = changedEdges.filter((e) => inside(e.from) !== inside(e.to) || (inside(e.from) && inside(e.to)));
+  el.innerHTML = `<div class="path">${path}</div>
+    <div class="sub">${LEVELS[n.depth - 1] ?? "unit"} · +${n.add} −${n.del}${n.status ? " · " + (n.status === "add" ? "new" : "removed") : ""}</div>
+    ${edges.length ? `<h2>Dependency changes</h2><ul class="plain">${edges.slice(0, 40).map((e) =>
+      `<li class="${e.s}">${e.s === "add" ? "+" : "−"} ${disp(e.from)} → ${disp(e.to)}</li>`).join("")}</ul>` : ""}
+    ${n.contracts.length ? `<h2>Contracts</h2><ul class="plain">${n.contracts.map((c) =>
+      `<li class="${c.s}">${c.s === "add" ? "+" : "−"} ${c.kind} ${c.name}</li>`).join("")}</ul>` : ""}
+    <h2>Files</h2><ul class="plain">${[...nodes.values()].filter((x) => inside(x.path)).flatMap((x) => x.files)
+      .map((f) => `<li>${f.status === "A" ? '<span class="add">A</span>' : f.status === "D" ? '<span class="del">D</span>' : "M"} ${f.path} <span class="add">+${f.add}</span> <span class="del">−${f.del}</span></li>`).join("") || '<li class="sub">none</li>'}</ul>`;
+}
+
+function renderTree() {
+  const ul = document.getElementById("tree"); ul.innerHTML = "";
+  (function walk(n) {
+    for (const c of shownChildren(n).filter(interesting)) {
+      const li = document.createElement("li");
+      li.style.paddingLeft = (c.depth - 1) * 12 + "px";
+      const open = expanded.has(c.path) && c.children.length;
+      li.innerHTML = `<span class="tw">${c.children.length ? (open ? "▾" : "▸") : ""}</span><span class="${c.status === "add" ? "add" : c.status === "del" ? "del" : ""}">${label(c)}</span><span class="ct">${c.add || c.del ? `<span class="add">+${c.add}</span> <span class="del">−${c.del}</span>` : c.edgeTouch ? "edges" : ""}</span>`;
+      if (c.path === selected) li.classList.add("sel");
+      li.onclick = () => toggle(c.path);
+      ul.appendChild(li);
+      if (open) walk(c);
+    }
+  })(root);
+}
+
+function renderStatic() {
+  document.getElementById("title").textContent = D.title || "Architecture diff";
+  document.title = D.title || "Architecture Diff";
+  document.getElementById("revs").textContent = `${D.base} → ${D.head}`;
+  const h = headline();
+  const lvl = (d) => `L${d} ${LEVELS[d] ?? "unit"}`;
+  const top = (list) => list.filter((p) => !list.some((q) => q !== p && p.startsWith(q + "/")));
+  const kind = (p) => LEVELS[p.split("/").length - 1] ?? "unit";
+  const cap = (items, n = 6) => items.length > n ? [...items.slice(0, n), `<li class="sub">… and ${items.length - n} more</li>`] : items;
+  const moves = cap(D.moves.map((m) => `<li class="mv">→ ${m.from} ⇒ ${m.to} <span class="sub">(${m.files} files)</span></li>`));
+  const units = cap([...top(D.added).map((p) => `<li class="add">+ new ${kind(p)} ${p}</li>`),
+                     ...top(D.removed).map((p) => `<li class="del">− removed ${kind(p)} ${p}</li>`)]);
+  const bumps = D.libs.filter((l) => l.base && l.head && l.base !== l.head).map((l) => {
+    const t = l.touched.filter((x) => x.how === "definition").length, m = l.touched.length - t;
+    return `<li class="lib">${l.repo} ${short(l.base)} → ${short(l.head)}: ${l.available ? `${l.files ?? 0} files changed, touches <strong>${t}</strong> of ${l.used} used items${m ? ` (+${m} mentioned)` : ""}${l.new_in_bump?.length ? `; we start using ${l.new_in_bump.length} item${l.new_in_bump.length > 1 ? "s" : ""} it adds` : ""}` : "not in local cargo cache"}</li>`;
+  });
+  const newLibs = D.libs.filter((l) => !l.base).map((l) => `<li class="lib">+ new git dependency ${l.repo} @${short(l.head)}</li>`);
+  document.getElementById("headline").innerHTML =
+    (bumps.length || newLibs.length ? `<b>Dependency bumps</b><ul style="margin-bottom:8px">${[...newLibs, ...bumps].join("")}</ul>` : "") +
+    (moves.length ? `<b>Moved</b><ul style="margin-bottom:8px">${moves.join("")}</ul>` : "") +
+    (units.length ? `<b>Units added / removed</b><ul style="margin-bottom:8px">${units.join("")}</ul>` : "") + (h
+    ? `<b>Structural change at ${lvl(h.level)}</b><ul>${h.hits.slice(0, 8).map((g) =>
+        `<li class="${g.add ? "add" : "del"}">${g.add ? "+" : "−"} ${disp(g.a)} → ${disp(g.b)}</li>`).join("")}${h.hits.length > 8 ? `<li class="sub">… and ${h.hits.length - 8} more</li>` : ""}</ul>`
+    : `<b>No dependency changes</b><span class="sub">${D.contracts.length ? "Contract surface changed, see below." : "Internal edits only: a line-level review is enough."}</span>`);
+  document.getElementById("contracts").innerHTML = D.contracts.map((c) =>
+    `<li class="${c.s}">${c.s === "add" ? "+" : "−"} ${c.kind} ${c.name}<br><span class="sub">${c.node ?? ""}</span></li>`).join("") || '<li class="sub">none</li>';
+  document.getElementById("libs").innerHTML = D.libs.map((l) => {
+    const list = (items, cls, sign) => items.map((x) => `<li class="${cls}">${sign} ${x}</li>`).join("");
+    return `<div class="libbox"><div><b>${l.repo}</b> <span class="sub">${revLabel(l)}</span></div>
+      <div class="sub">${l.packages.join(", ")} · ${l.used} items used${l.available ? "" : " · not in local cargo cache"}</div>
+      ${l.touched.length ? `<div class="sub" style="margin-top:6px">Used items the bump touches:</div><ul class="plain">${l.touched.map((x) =>
+        `<li class="${x.how === "definition" ? "chg" : "sub"}">${x.how === "definition" ? "●" : "○"} ${x.item}</li>`).join("")}</ul>` : ""}
+      ${l.new_in_bump?.length ? `<div class="sub" style="margin-top:6px">New in this bump, used by us:</div><ul class="plain">${list(l.new_in_bump, "add", "★")}</ul>` : ""}
+      ${l.usage_added.length || l.usage_removed.length ? `<div class="sub" style="margin-top:6px">Our usage:</div><ul class="plain">${list(l.usage_added, "add", "+")}${list(l.usage_removed, "del", "−")}</ul>` : ""}
+    </div>`;
+  }).join("") || '<span class="sub">none</span>';
+  document.getElementById("other").innerHTML = D.other.map((o) => `<li>${o.path} <span class="add">+${o.add}</span> <span class="del">−${o.del}</span></li>`).join("") || '<li class="sub">none</li>';
+}
+
+document.getElementById("auto").onclick = () => { autoZoom(); render(); };
+document.getElementById("l0").onclick = () => { expanded = new Set([""]); render(); };
+document.getElementById("budget").oninput = (e) => { budget = +e.target.value; document.getElementById("budgetv").textContent = budget; autoZoom(); render(); };
+document.getElementById("same").onchange = render;
+document.getElementById("src").onclick = () => { const p = document.getElementById("mmd"); p.hidden = !p.hidden; };
+
+// ---------- system view: tasks, queues and message types ----------
+const APPS = D.system?.apps ?? [];
+let SYS = null, taskByName = new Map(), queueByName = new Map();
+const sysLabel = (k) => ({ "ext:http": "HTTP clients" })[k] ?? D.systems[k] ?? k;
+const taskChurn = (t) => {
+  if (t.churn) return t.churn;
+  const n = t.unit && nodes.get(t.unit);
+  return n ? { add: n.add, del: n.del } : { add: 0, del: 0 };
+};
+const html = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const pureMove = (t) => t.status === "move" && !t.members_added?.length && !t.members_removed?.length && !t.members_changed?.length && !t.target && !t.kind_change;
+const typeChanges = (q) => q.types.filter((t) => t.status !== "same" && !pureMove(t));
+const typeMoves = (q) => q.types.filter(pureMove);
+const nodeName = (k) => k.startsWith("q:") ? "queue " + k.slice(2) : k.startsWith("r:") ? "resource " + k.slice(2) : k.startsWith("ext:") ? sysLabel(k) : k;
+const KIND_NOTE = { panic: " (panic)", spawn: " (spawns)", shared: " (shares)" };
+
+function appChanges(app) {
+  const tasks = app.tasks.filter((t) => t.status !== "same" || t.renamed_from || t.attr_changes.length).length;
+  const queues = app.queues.filter((q) => q.status !== "same" || q.cap[0] !== q.cap[1] || typeChanges(q).length).length;
+  const edges = app.edges.filter((e) => e.s !== "same").length;
+  const res = app.resources.filter((r) => r.status !== "same").length;
+  return tasks + queues + edges + res;
+}
+
+function setApp(name) {
+  SYS = APPS.find((a) => a.name === name) ?? APPS[0] ?? null;
+  taskByName = new Map((SYS?.tasks ?? []).map((t) => [t.name, t]));
+  queueByName = new Map((SYS?.queues ?? []).map((q) => [q.name, q]));
+  document.getElementById("sysDetail").innerHTML = '<span class="sub">Click a task, queue or resource.</span>';
+  renderSysHeadline();
+}
+
+function attrBadge(t) {
+  const a = t.attrs ?? {};
+  const val = (k) => { const [x, y] = a[k] ?? []; return x === y || x == null || y == null ? (y ?? x) : `${x}→${y}`; };
+  const parts = [];
+  if (a.priority) parts.push(`p${val("priority")}`);
+  if (a.binds) parts.push(`⚡${val("binds")}`);
+  return parts.length ? ` <small>${parts.join(" ")}</small>` : "";
+}
+
+function sysSource() {
+  const L = ["flowchart LR"], cls = [], styles = [];
+  const panic = document.getElementById("sysPanic").checked, infra = document.getElementById("sysStores").checked;
+  const spawn = document.getElementById("sysSpawn").checked;
+  const edges = SYS.edges.filter((e) => e.s !== "same" || ((panic || e.kind !== "panic") && (spawn || e.kind !== "spawn") && (infra || e.kind !== "io")));
+  const used = new Set(edges.flatMap((e) => [e.from, e.to]));
+  const lonely = document.getElementById("sysLonely").checked;
+  for (const t of SYS.tasks) {
+    const c0 = taskChurn(t);
+    if (!lonely && !used.has(t.name) && t.status === "same" && !t.attr_changes.length && !c0.add && !c0.del) continue;
+    const id = idOf("sys:" + t.name), c = taskChurn(t);
+    const extra = attrBadge(t) + (t.renamed_from ? ` <small>was ${t.renamed_from}</small>` : "") + (c.add || c.del ? ` <small>+${c.add} −${c.del}</small>` : "");
+    L.push(`  ${id}(["${esc(t.name)}${extra}"])`);
+    const changed = c.add || c.del || t.renamed_from || t.attr_changes.length;
+    cls.push(`class ${id} ${t.status === "add" ? "added" : t.status === "del" ? "removed" : t.attr_changes.length ? "attrchg" : changed ? "changed" : "plain"}`);
+  }
+  for (const q of SYS.queues) {
+    if (!lonely && !used.has("q:" + q.name) && q.status === "same" && !typeChanges(q).length && q.cap[0] === q.cap[1]) continue;
+    const id = idOf("sys:q:" + q.name);
+    const cap = q.cap[0] === q.cap[1] || q.cap[0] == null || q.cap[1] == null ? (q.cap[1] ?? q.cap[0]) : `${q.cap[0]}→${q.cap[1]}`;
+    const ty = q.type[1] ?? q.type[0] ?? "?";
+    const n = typeChanges(q).length;
+    L.push(`  ${id}[/"${esc(q.name)} · ${esc(String(cap))}${ty !== q.name ? `<br><small>${esc(ty)}</small>` : ""}${n ? `<br><small>${n} type change${n > 1 ? "s" : ""}</small>` : ""}"/]`);
+    const typeChanged = n || (q.type[0] && q.type[1] && q.type[0] !== q.type[1]);
+    cls.push(`class ${id} ${q.status === "add" ? "added" : q.status === "del" ? "removed" : typeChanged || q.cap[0] !== q.cap[1] ? "qmsg" : "queue"}`);
+  }
+  for (const r of SYS.resources) {
+    const id = idOf("sys:r:" + r.name);
+    L.push(`  ${id}{{"${esc(r.name)}"}}`);
+    cls.push(`class ${id} ${r.status === "add" ? "added" : r.status === "del" ? "removed" : "res"}`);
+  }
+  for (const k of new Set([...used].filter((x) => x.startsWith("ext:")))) {
+    const id = idOf("sys:" + k);
+    L.push(`  ${id}[("${esc(sysLabel(k))}")]`);
+    cls.push(`class ${id} plain`);
+  }
+  edges.forEach((e, i) => {
+    const a = idOf("sys:" + e.from), b = idOf("sys:" + e.to);
+    const arrow = e.kind === "panic" || e.kind === "spawn" ? "-.->" : e.kind === "shared" ? "---" : "-->";
+    const lbl = e.kind === "panic" || e.kind === "spawn" ? `|"${e.kind}"|` : "";
+    L.push(`  ${a} ${arrow}${lbl} ${b}`);
+    const w = e.kind === "io" || e.kind === "spawn" ? 1 : 2;
+    styles.push(e.s === "add" ? `linkStyle ${i} stroke:#1f9d55,stroke-width:3px`
+      : e.s === "del" ? `linkStyle ${i} stroke:#d64545,stroke-width:3px,stroke-dasharray:6 4`
+      : `linkStyle ${i} stroke:#9a9ea6,stroke-width:${w}px`);
+  });
+  L.push("  classDef plain fill:#9a9ea61a,stroke:#9a9ea6,color:inherit");
+  L.push("  classDef changed fill:#d98a1c33,stroke:#d98a1c,stroke-width:2px");
+  L.push("  classDef attrchg fill:#d98a1c33,stroke:#d98a1c,stroke-width:3px,stroke-dasharray:4 2");
+  L.push("  classDef added fill:#1f9d5533,stroke:#1f9d55,stroke-width:2px");
+  L.push("  classDef removed fill:#d6454522,stroke:#d64545,stroke-width:2px,stroke-dasharray:5 3");
+  L.push("  classDef queue fill:#3b6fd814,stroke:#3b6fd8");
+  L.push("  classDef qmsg fill:#d98a1c26,stroke:#d98a1c,stroke-width:3px");
+  L.push("  classDef res fill:#8b5cf61a,stroke:#8b5cf6");
+  return [...L, ...cls.map((c) => "  " + c), ...styles.map((s) => "  " + s)].join("\n");
+}
+
+async function renderSystem() {
+  const el = document.getElementById("diagram");
+  if (!SYS) { el.innerHTML = '<p class="sub">No task wiring found. Configure [system_view] in archdiff.toml.</p>'; return; }
+  const src = sysSource();
+  document.getElementById("mmd").textContent = src;
+  const { svg } = await mermaid.render("s" + ++renderSeq, src);
+  el.innerHTML = svg;
+  el.querySelectorAll("g.node").forEach((g) => {
+    const m = (g.id || "").match(/(?:^|[-_])(n\d+)(?:[-_]|$)/);
+    const path = m && byId.get(m[1]);
+    if (path?.startsWith("sys:")) g.addEventListener("click", () => selectSys(path.slice(4)));
+  });
+}
+
+function typeRow(t) {
+  const sign = { add: "+", del: "−", move: "→", changed: "~", same: "" }[t.status];
+  const cls = { add: "add", del: "del", move: "mv", changed: "chg", same: "sub" }[t.status];
+  const parts = [];
+  if (t.status === "move") parts.push(`moved from ${t.from_crate}`);
+  if (t.kind_change) parts.push(`${t.kind_change[0]} → ${t.kind_change[1]}`);
+  if (t.target) parts.push(`alias ${html(t.target[0] ?? "–")} → ${html(t.target[1] ?? "–")}`);
+  for (const m of t.members_added ?? []) parts.push(`<span class="add">+${m}</span>`);
+  for (const m of t.members_removed ?? []) parts.push(`<span class="del">−${m}</span>`);
+  for (const m of t.members_changed ?? []) parts.push(`<span class="chg">~${m}</span>`);
+  if (t.status === "same" || t.status === "add" || pureMove(t)) parts.push(`<span class="sub">${t.target_now ? "= " + html(t.target_now) : t.members.join(", ")}</span>`);
+  return `<tr><td class="${cls}">${sign} ${t.name}<br><span class="sub">${t.kind} · ${t.crate}</span></td><td>${parts.join(" ")}</td></tr>`;
+}
+
+function connections(key) {
+  return `<h2>Connections</h2><ul class="plain">${SYS.edges.filter((e) => e.from === key || e.to === key).map((e) =>
+    `<li class="${e.s === "same" ? "" : e.s}">${e.s === "add" ? "+" : e.s === "del" ? "−" : ""} ${nodeName(e.from)} → ${nodeName(e.to)}${KIND_NOTE[e.kind] ?? ""}</li>`).join("") || '<li class="sub">none</li>'}</ul>`;
+}
+
+function selectSys(key) {
+  const el = document.getElementById("sysDetail");
+  if (key.startsWith("q:")) {
+    const q = queueByName.get(key.slice(2));
+    const changed = typeChanges(q), same = q.types.filter((t) => t.status === "same" || pureMove(t));
+    el.innerHTML = `<div class="path">queue ${q.name}</div>
+      <div class="sub">capacity ${q.cap[0] ?? "–"} → ${q.cap[1] ?? "–"}</div>
+      <div class="sub">type ${html(q.type[0] ?? "–")} → ${html(q.type[1] ?? "–")}</div>
+      <h2>Message type changes</h2>${changed.length ? `<table class="types">${changed.map(typeRow).join("")}</table>` : '<span class="sub">none</span>'}
+      <h2>Unchanged types (→ = moved crate)</h2><table class="types">${same.map(typeRow).join("") || '<tr><td class="sub">none</td></tr>'}</table>
+      ${connections(key)}`;
+    return;
+  }
+  const t = taskByName.get(key);
+  if (!t) { el.innerHTML = `<div class="path">${nodeName(key)}</div>${connections(key)}`; return; }
+  const c = taskChurn(t);
+  const attrs = Object.entries(t.attrs ?? {}).map(([k, [x, y]]) =>
+    `<li class="${x !== y && x != null && y != null ? "chg" : ""}">${k}: ${x === y || x == null || y == null ? html(y ?? x) : `${html(x)} → ${html(y)}`}</li>`).join("");
+  el.innerHTML = `<div class="path">task ${t.name}</div>
+    <div class="sub">${t.fn}() in ${t.file ?? "?"}${t.renamed_from ? ` · was ${t.renamed_from}` : ""}</div>
+    <div class="sub">code +${c.add} −${c.del}${t.unit ? ` · <a href="#" id="toCode">show in code view</a>` : ""}</div>
+    ${attrs ? `<h2>Attributes</h2><ul class="plain">${attrs}</ul>` : ""}
+    ${connections(key)}`;
+  document.getElementById("toCode")?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    for (const a of ancestors(t.unit).slice(1)) expanded.add(a.path);
+    setTab("code"); select(t.unit);
+  });
+}
+
+function renderSysHeadline() {
+  const el = document.getElementById("sysHeadline");
+  if (!SYS) { el.innerHTML = "<b>No task wiring found</b>"; return; }
+  const items = [];
+  if (SYS.renamed_from) items.push(`<li class="mv">→ app ${SYS.renamed_from} ⇒ ${SYS.name}</li>`);
+  for (const t of SYS.tasks) {
+    if (t.status === "add") items.push(`<li class="add">+ task ${t.name}${attrBadge(t)}</li>`);
+    if (t.status === "del") items.push(`<li class="del">− task ${t.name}</li>`);
+    if (t.renamed_from) items.push(`<li class="mv">→ task ${t.renamed_from} ⇒ ${t.name}</li>`);
+    for (const k of t.attr_changes) items.push(`<li class="chg">~ task ${t.name} ${k} ${html(t.attrs[k][0] ?? "–")} → ${html(t.attrs[k][1] ?? "–")}</li>`);
+  }
+  for (const q of SYS.queues) {
+    if (q.status !== "same") items.push(`<li class="${q.status}">${q.status === "add" ? "+" : "−"} queue ${q.name} · ${q.cap[1] ?? q.cap[0]}</li>`);
+    else if (q.cap[0] !== q.cap[1]) items.push(`<li class="chg">~ queue ${q.name} capacity ${q.cap[0]} → ${q.cap[1]}</li>`);
+  }
+  for (const r of SYS.resources) if (r.status !== "same") items.push(`<li class="${r.status}">${r.status === "add" ? "+" : "−"} shared resource ${r.name}</li>`);
+  const conn = SYS.edges.filter((e) => e.s !== "same");
+  const msgs = SYS.queues.filter((q) => typeChanges(q).length).map((q) => {
+    const ch = typeChanges(q);
+    const summary = ch.slice(0, 4).map((t) => t.status === "changed"
+      ? `${t.name} ${[...(t.members_added ?? []).map((m) => "+" + m), ...(t.members_removed ?? []).map((m) => "−" + m), ...(t.members_changed ?? []).map((m) => "~" + m)].join(" ")}`
+      : t.status === "move" ? `${t.name} ${t.from_crate} ⇒ ${t.crate}` : `${t.status === "add" ? "+" : "−"}${t.name}`).join("; ");
+    return `<li class="chg"><b style="display:inline">${q.name}</b>: ${summary}${ch.length > 4 ? `; … ${ch.length - 4} more` : ""}</li>`;
+  });
+  const moved = new Map();
+  for (const q of SYS.queues) for (const t of typeMoves(q)) {
+    const k = `${t.from_crate} ⇒ ${t.crate}`;
+    moved.set(k, (moved.get(k) ?? new Set()).add(t.name));
+  }
+  for (const [k, names] of moved) msgs.push(`<li class="mv">${names.size} type${names.size > 1 ? "s" : ""} moved unchanged ${k}</li>`);
+  el.innerHTML =
+    (items.length ? `<b>Topology</b><ul style="margin-bottom:8px">${items.join("")}</ul>` : "") +
+    (conn.length ? `<b>Connections</b><ul style="margin-bottom:8px">${conn.slice(0, 10).map((e) =>
+      `<li class="${e.s}">${e.s === "add" ? "+" : "−"} ${nodeName(e.from)} → ${nodeName(e.to)}${KIND_NOTE[e.kind] ?? ""}</li>`).join("")}${conn.length > 10 ? `<li class="sub">… and ${conn.length - 10} more</li>` : ""}</ul>` : "") +
+    (msgs.length ? `<b>Message types</b><ul>${msgs.join("")}</ul>` : "") ||
+    `<b>No system changes</b><span class="sub">Same tasks, queues and message types.</span>`;
+}
+
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  for (const [id, show] of [["codeSide", t === "code"], ["codeCtl", t === "code"], ["sysSide", t === "system"], ["sysCtl", t === "system"], ["sysLegend", t === "system"]])
+    document.getElementById(id).hidden = !show;
+  render();
+}
+
+// App picker: the app with the most changes first, a dot on every app that changed.
+const appSel = document.getElementById("sysApp");
+const ranked = [...APPS].sort((a, b) => appChanges(b) - appChanges(a));
+appSel.innerHTML = ranked.map((a) => `<option value="${a.name}">${a.name}${appChanges(a) ? " •" : ""}</option>`).join("");
+appSel.parentElement.hidden = APPS.length < 2;
+appSel.onchange = () => { setApp(appSel.value); render(); };
+document.getElementById("sysDot").textContent = APPS.some(appChanges) ? " " : "";
+
+document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+for (const id of ["sysPanic", "sysStores", "sysSpawn", "sysLonely"]) document.getElementById(id).onchange = render;
+document.getElementById("sysSrc").onclick = () => { const p = document.getElementById("mmd"); p.hidden = !p.hidden; };
+
+const params = new URLSearchParams(location.search);
+renderStatic();
+setApp(params.get("app") ?? ranked[0]?.name);
+if (SYS) appSel.value = SYS.name;
+autoZoom();
+setTab(params.get("tab") === "system" ? "system" : "code");
+if (params.get("select")) selectSys(params.get("select"));
+</script>
+</body>
+</html>

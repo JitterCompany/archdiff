@@ -1,0 +1,14 @@
+[project]
+name = "archdiff"
+version = "0.1.0"
+description = "Architecture-level diff of two git revisions"
+requires-python = ">=3.11"
+
+[project.scripts]
+archdiff = "archdiff.__main__:main"
+
+[tool.setuptools]
+packages = ["archdiff", "archdiff.system"]
+
+[tool.setuptools.package-data]
+archdiff = ["viewer.html"]
