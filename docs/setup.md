@@ -134,7 +134,7 @@ jobs:
       # - uses: webfactory/ssh-agent@v0.10.0
       #   with:
       #     ssh-private-key: ${{ secrets.YOUR_DEPLOY_KEY }}
-      - uses: JitterCompany/archdiff@v0.1.0
+      - uses: JitterCompany/archdiff@v0.1.1
         with:
           site: <domain>
           name: <repo>
@@ -151,6 +151,8 @@ Open a PR that adds this file. A PR that adds a workflow also runs it, so it tes
 If your repo has a changelog check on every PR, this PR has nothing user-facing to log. Use whatever skip label that check supports.
 
 ## Troubleshooting
+
+The action starts with a **Check setup** step. It reports missing or malformed inputs (empty secrets, a `.pub` file instead of the private key, a known_hosts without the site, a shallow checkout) with the fix, before anything is generated. Upload and comment failures also end with a hint. The table covers the rest, and what those errors look like on versions before v0.1.1.
 
 | Symptom | Cause | Fix |
 |---|---|---|

@@ -21,6 +21,17 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check setup
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        SITE: ${{ inputs.site }}
+        NAME: ${{ inputs.name }}
+        KEY: ${{ inputs.upload-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: bash "$GITHUB_ACTION_PATH/ci/check.sh"
+
     - name: Generate
       shell: bash
       env:
@@ -45,31 +56,15 @@ runs:
       env:
         PR: ${{ github.event.pull_request.number }}
         SITE: ${{ inputs.site }}
-        USER_: ${{ inputs.upload-user }}
+        NAME: ${{ inputs.name }}
+        UPLOAD_USER: ${{ inputs.upload-user }}
         KEY: ${{ inputs.upload-key }}
         KNOWN_HOSTS: ${{ inputs.known-hosts }}
-      run: |
-        key="$RUNNER_TEMP/archdiff-key"
-        printf '%s\n' "$KEY" > "$key"
-        chmod 600 "$key"
-        printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/archdiff-known-hosts"
-        rsync -a --delete \
-          -e "ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/archdiff-known-hosts" \
-          "$RUNNER_TEMP/archdiff/" "$USER_@$SITE:pr-$PR/"
-        rm -f "$key"
+      run: bash "$GITHUB_ACTION_PATH/ci/upload.sh"
 
     - name: Comment
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         PR: ${{ github.event.pull_request.number }}
-      run: |
-        marker='<!-- archdiff -->'
-        body="$(printf '%s\n%s' "$marker" "$(cat "$RUNNER_TEMP/archdiff-summary.md")")"
-        id="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)"
-        if [ -n "$id" ]; then
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
-        else
-          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
-        fi
+      run: bash "$GITHUB_ACTION_PATH/ci/comment.sh"
