@@ -43,7 +43,9 @@ fi
 id oauth2-proxy >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin oauth2-proxy
 chmod 640 /etc/archdiff/oauth2-proxy.env
 chgrp oauth2-proxy /etc/archdiff/oauth2-proxy.env
-install -m 644 "$HERE/oauth2-proxy.service" /etc/systemd/system/oauth2-proxy.service
+# The domain must be whitelisted, or the redirect back to the requested page after login is refused.
+sed "s/__DOMAIN__/$DOMAIN/g" "$HERE/oauth2-proxy.service" > /etc/systemd/system/oauth2-proxy.service
+chmod 644 /etc/systemd/system/oauth2-proxy.service
 systemctl daemon-reload
 systemctl enable --now oauth2-proxy
 systemctl restart oauth2-proxy

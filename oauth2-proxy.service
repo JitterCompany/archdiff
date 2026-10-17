@@ -10,6 +10,7 @@ ExecStart=/usr/local/bin/oauth2-proxy \
   --provider=github \
   --http-address=127.0.0.1:4180 \
   --reverse-proxy=true \
+  --whitelist-domain=__DOMAIN__ \
   --email-domain=* \
   --cookie-secure=true \
   --cookie-expire=168h \
