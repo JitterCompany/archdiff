@@ -15,6 +15,7 @@ from .common import balanced, split_top, strip_comments
 ITEM = re.compile(r"#\[(task|init|idle)\b")
 GENERIC_CTOR = re.compile(r"\b(create_\w+|make_channel!)\s*\(")
 TUPLE_LET = re.compile(r"let\s*\(\s*(?:mut\s+)?(\w+)\s*,\s*(?:mut\s+)?(\w+)\s*\)\s*=\s*([\w:!]+)\s*\(")
+BLOCK_LET = re.compile(r"let\s*\(\s*(?:mut\s+)?(\w+)\s*,\s*(?:mut\s+)?(\w+)\s*\)\s*=\s*\{")
 LET = re.compile(r"let\s+(?:mut\s+)?(\w+)\s*(?::[^=;]+)?=\s*([^;]+);")
 SPAWN = re.compile(r"\b(\w+)::spawn\s*\(")
 STATIC = re.compile(r"\bstatic\s+([A-Z][A-Z0-9_]*)\s*:\s*([^=]+)=")
@@ -110,9 +111,21 @@ def snapshot(files, entry, cfg):
 
     def scan_body(body, scope, created):
         """Bindings in statement order: channel pairs and aliases."""
-        events = sorted([(m.start(), "pair", m) for m in TUPLE_LET.finditer(body)] + [(m.start(), "let", m) for m in LET.finditer(body)], key=lambda e: e[0])
-        for _, kind, m in events:
-            if kind == "pair":
+        events = sorted([(m.start(), "pair", m) for m in TUPLE_LET.finditer(body)] + [(m.start(), "let", m) for m in LET.finditer(body)] + [(m.start(), "block", m) for m in BLOCK_LET.finditer(body)], key=lambda e: e[0])
+        skip_to = 0
+        for start, kind, m in events:
+            if start < skip_to:
+                continue
+            if kind == "block":
+                # `let (s, r) = { let (tx, rx) = create_x(); wrap(tx, rx) };`
+                inner, skip_to = balanced(body, m.end() - 1, "{", "}")
+                inner_scope = scan_body(inner, dict(scope), created)
+                carried = ends_of(inner.rsplit(";", 1)[-1], inner_scope)
+                tx, rx = m.group(1), m.group(2)
+                if carried:
+                    scope[tx] = {e for e in carried if e[0] == "tx"}
+                    scope[rx] = {e for e in carried if e[0] == "rx"}
+            elif kind == "pair":
                 tx, rx, ctor = m.groups()
                 if ctor in ctors or GENERIC_CTOR.match(ctor + "("):
                     args, _ = balanced(body, m.end() - 1)
