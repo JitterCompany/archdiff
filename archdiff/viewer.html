@@ -62,6 +62,7 @@
   table.types { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 4px; }
   table.types td:first-child { width: 42%; }
   table.types td { padding: 3px 4px; border-top: 1px solid var(--line); vertical-align: top; font-family: ui-monospace, monospace; word-break: break-word; }
+  .legend .l-irq::before { border-color: var(--muted); border-top: 1px dashed; }
   .legend .l-res::before { width: 14px; height: 10px; border: 2px solid #8b5cf6; border-radius: 3px; }
   select { font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
   .legend .l-same::before { border-color: var(--muted); border-top-width: 1px; }
@@ -103,12 +104,13 @@
     <div class="controls" id="sysCtl" hidden>
       <label>App <select id="sysApp"></select></label>
       <label><input type="checkbox" id="sysSpawn" checked> spawns</label>
+      <label><input type="checkbox" id="sysIrq" checked> interrupts</label>
       <label><input type="checkbox" id="sysLonely"> unconnected</label>
       <label><input type="checkbox" id="sysPanic"> panic hooks</label>
       <label><input type="checkbox" id="sysStores"> infrastructure</label>
       <button id="sysSrc">Mermaid source</button>
     </div>
-    <div class="legend" id="sysLegend" hidden><span class="l-task">task (p = priority, ⚡ = interrupt)</span><span class="l-queue">queue (capacity · message type)</span><span class="l-msg">message type changed</span><span class="l-res">shared resource</span><span class="l-add">new connection</span><span class="l-del">removed connection</span></div>
+    <div class="legend" id="sysLegend" hidden><span class="l-task">task (p = priority, ⚡ = interrupt)</span><span class="l-queue">queue (capacity · message type)</span><span class="l-msg">message type changed</span><span class="l-res">shared resource</span><span class="l-irq">interrupt wakes task</span><span class="l-add">new connection</span><span class="l-del">removed connection</span></div>
     <div id="codeCtl">
     <div class="controls">
       <button id="auto">Auto zoom</button>
@@ -480,7 +482,7 @@ const pureMove = (t) => t.status === "move" && !t.members_added?.length && !t.me
 const typeChanges = (q) => q.types.filter((t) => t.status !== "same" && !pureMove(t));
 const typeMoves = (q) => q.types.filter(pureMove);
 const nodeName = (k) => k.startsWith("q:") ? "queue " + k.slice(2) : k.startsWith("r:") ? "resource " + k.slice(2) : k.startsWith("ext:") ? sysLabel(k) : k;
-const KIND_NOTE = { panic: " (panic)", spawn: " (spawns)", shared: " (shares)" };
+const KIND_NOTE = { panic: " (panic)", spawn: " (spawns)", shared: " (shares)", irq: " (wakes)" };
 
 function appChanges(app) {
   const tasks = app.tasks.filter((t) => t.status !== "same" || t.renamed_from || t.attr_changes.length).length;
@@ -510,8 +512,8 @@ function attrBadge(t) {
 function sysSource() {
   const L = ["flowchart LR"], cls = [], styles = [];
   const panic = document.getElementById("sysPanic").checked, infra = document.getElementById("sysStores").checked;
-  const spawn = document.getElementById("sysSpawn").checked;
-  const edges = SYS.edges.filter((e) => e.s !== "same" || ((panic || e.kind !== "panic") && (spawn || e.kind !== "spawn") && (infra || e.kind !== "io")));
+  const spawn = document.getElementById("sysSpawn").checked, irq = document.getElementById("sysIrq").checked;
+  const edges = SYS.edges.filter((e) => e.s !== "same" || ((panic || e.kind !== "panic") && (spawn || e.kind !== "spawn") && (irq || e.kind !== "irq") && (infra || e.kind !== "io")));
   const used = new Set(edges.flatMap((e) => [e.from, e.to]));
   const lonely = document.getElementById("sysLonely").checked;
   for (const t of SYS.tasks) {
@@ -545,10 +547,10 @@ function sysSource() {
   }
   edges.forEach((e, i) => {
     const a = idOf("sys:" + e.from), b = idOf("sys:" + e.to);
-    const arrow = e.kind === "panic" || e.kind === "spawn" ? "-.->" : e.kind === "shared" ? "---" : "-->";
+    const arrow = e.kind === "panic" || e.kind === "spawn" || e.kind === "irq" ? "-.->" : e.kind === "shared" ? "---" : "-->";
     const lbl = e.kind === "panic" || e.kind === "spawn" ? `|"${e.kind}"|` : "";
     L.push(`  ${a} ${arrow}${lbl} ${b}`);
-    const w = e.kind === "io" || e.kind === "spawn" ? 1 : 2;
+    const w = e.kind === "io" || e.kind === "spawn" || e.kind === "irq" ? 1 : 2;
     styles.push(e.s === "add" ? `linkStyle ${i} stroke:#1f9d55,stroke-width:3px`
       : e.s === "del" ? `linkStyle ${i} stroke:#d64545,stroke-width:3px,stroke-dasharray:6 4`
       : `linkStyle ${i} stroke:#9a9ea6,stroke-width:${w}px`);
@@ -682,7 +684,7 @@ appSel.onchange = () => { setApp(appSel.value); render(); };
 document.getElementById("sysDot").textContent = APPS.some(appChanges) ? " " : "";
 
 document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
-for (const id of ["sysPanic", "sysStores", "sysSpawn", "sysLonely"]) document.getElementById(id).onchange = render;
+for (const id of ["sysPanic", "sysStores", "sysSpawn", "sysIrq", "sysLonely"]) document.getElementById(id).onchange = render;
 document.getElementById("sysSrc").onclick = () => { const p = document.getElementById("mmd"); p.hidden = !p.hidden; };
 
 const params = new URLSearchParams(location.search);

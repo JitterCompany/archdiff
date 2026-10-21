@@ -61,7 +61,7 @@ Not yet. For RTIC the spawn tree already shows tasks that spawn other tasks. For
 
 ### Why do some tasks or queues not show?
 
-Tasks and queues with no visible connection and no change are hidden, mostly interrupt handlers. Tick "unconnected" to see them.
+Tasks and queues with no visible connection and no change are hidden. Tick "unconnected" to see them. Interrupt handlers are linked to the tasks they wake where the peripheral can be traced (see the README); a handler for something every task uses, like the system timer, stays unconnected.
 
 ## Setup and hosting
 
