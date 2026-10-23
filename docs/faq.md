@@ -22,6 +22,14 @@ The tree has fixed levels: L0 system, L1 container (a crate, an app area), L2 mo
 
 The headline names the coarsest level where a dependency appeared or vanished, e.g. "Dependency changes at L1 container".
 
+### What happens when I click a block?
+
+Click zooms in: the block fills the canvas with its own children and the wiring between them, changed or not. Outside it, only the blocks it has dependencies with are drawn, each at the level where it branches off. The breadcrumb above the graph and the browser's back button go up again. The zoom level is in the URL (`?focus=...`), so you can link someone to it.
+
+- Shift-click opens a block in place instead, to see two neighbours side by side.
+- Clicking a line under "Structural change" in the headline zooms to where that change happens.
+- "Whole system" goes back to the top.
+
 ### What does a "structural change" mean?
 
 A dependency between two units that exists on one side only. Edges are compared after aggregating to the level shown, so a file that switches imports inside the same module is not a structural change at module level.

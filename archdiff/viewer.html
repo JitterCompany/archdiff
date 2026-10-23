@@ -40,6 +40,8 @@
   .tree .tw { width: 12px; color: var(--muted); flex: none; }
   .tree .ct { margin-left: auto; color: var(--muted); flex: none; }
   .tree li.sel { color: var(--accent); font-weight: 600; }
+  .crumbs { font-size: 13px; margin-top: 10px; } .crumbs a { color: var(--accent); cursor: pointer; } .crumbs .sep { color: var(--muted); margin: 0 6px; }
+  .headline li[data-focus] { cursor: pointer; } .headline li[data-focus]:hover { text-decoration: underline; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12px; }
   .controls input[type=range] { width: 110px; }
   button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
@@ -95,7 +97,7 @@
     <h2>Changed units</h2>
     <ul class="plain tree" id="tree"></ul>
     <h2>Selected</h2>
-    <div class="detail" id="detail"><span class="sub">Click a node or a tree item.</span></div>
+    <div class="detail" id="detail"><span class="sub">Click a block to zoom into it, shift-click to open it in place.</span></div>
     <h2>Not in the map</h2>
     <ul class="plain" id="other"></ul>
     </div>
@@ -115,11 +117,12 @@
     <div id="codeCtl">
     <div class="controls">
       <button id="auto">Auto zoom</button>
-      <button id="l0">System only</button>
+      <button id="l0">Whole system</button>
       <label>Node budget <input type="range" id="budget" min="6" max="40" value="18"> <span id="budgetv">18</span></label>
       <label><input type="checkbox" id="same" checked> unchanged edges</label>
       <button id="src">Mermaid source</button>
     </div>
+    <div class="crumbs" id="crumbs"></div>
     <div class="legend"><span class="l-add">new dependency</span><span class="l-del">removed dependency</span><span class="l-mv">moved unit (blue box)</span><span class="l-lib">git dependency (dashed purple)</span><span class="l-same">existing (label = +added/−removed underneath)</span></div>
     </div>
     <div id="diagram" style="margin-top:10px"></div>
@@ -188,6 +191,29 @@ const label = (n) => n.depth === 1 ? (D.systems[n.path] ?? n.path) + (libOf.has(
 let expanded = new Set([""]);
 let budget = 18;
 let selected = null;
+// Zoom: the block whose inside fills the canvas. Outside it, only the neighbours it
+// has edges with are drawn, each at the level where it branches off the focus path.
+let focus = "";
+const inFocus = (p, f = focus) => !f || p === f || p.startsWith(f + "/");
+function boundary(p) {
+  const fa = focus.split("/"), pa = p.split("/");
+  let i = 0;
+  while (i < fa.length && pa[i] === fa[i]) i++;
+  return pa.slice(0, i + 1).join("/");
+}
+const boundaryCache = new Map();
+function boundaryNodes() {
+  if (!focus) return [];
+  if (!boundaryCache.has(focus)) {
+    const out = new Set();
+    for (const e of D.edges) {
+      const a = inFocus(e.from), b = inFocus(e.to);
+      if (a !== b) out.add(boundary(a ? e.to : e.from));
+    }
+    boundaryCache.set(focus, [...out].sort());
+  }
+  return boundaryCache.get(focus);
+}
 
 // Children shown individually when n is expanded; the rest collapse into one "more" node.
 const MAX_CHILDREN = 6;
@@ -195,11 +221,13 @@ const weight = (n) => 100 * n.contracts.length + 50 * n.edgeTouch + n.churn + (n
 const shownCache = new Map();
 function shownChildren(n) {
   if (n === root) return n.children.filter((c) => !isExt(c.path) || usedExt.has(c.path));
-  if (!shownCache.has(n)) {
-    const ranked = n.children.filter(interesting).sort((a, b) => weight(b) - weight(a));
-    shownCache.set(n, ranked.slice(0, MAX_CHILDREN));
+  // The zoomed-in block shows its unchanged children too, so the canvas is never empty.
+  const key = n.path === focus ? n.path + "\u0000focus" : n.path;
+  if (!shownCache.has(key)) {
+    const ranked = (n.path === focus ? n.children : n.children.filter(interesting)).sort((a, b) => weight(b) - weight(a));
+    shownCache.set(key, ranked.slice(0, n.path === focus ? 2 * MAX_CHILDREN : MAX_CHILDREN));
   }
-  return shownCache.get(n);
+  return shownCache.get(key);
 }
 const moreId = (n) => n.path + "/…";
 function hasMore(n) { return n !== root && shownChildren(n).length < n.children.length; }
@@ -209,13 +237,15 @@ function frontier(exp = expanded) {
   (function walk(n) {
     for (const c of shownChildren(n)) exp.has(c.path) && c.children.length ? walk(c) : out.push(c.path);
     if (hasMore(n)) out.push(moreId(n));
-  })(root);
-  return out;
+  })(node(focus));
+  return [...out, ...boundaryNodes()];
 }
 
 // Map a logical path to the visible node that contains it.
 function visibleOf(path, exp = expanded) {
-  const chain = ancestors(path).reverse();
+  if (!inFocus(path)) return boundary(path);
+  const depth = focus ? focus.split("/").length : 0;
+  const chain = ancestors(path).reverse().filter((a) => a.depth > depth);
   for (const a of chain) {
     const parent = a.parent;
     if (parent !== root && !shownChildren(parent).includes(a)) return moreId(parent);
@@ -227,6 +257,7 @@ function visibleOf(path, exp = expanded) {
 function aggregate(exp = expanded) {
   const m = new Map();
   for (const e of D.edges) {
+    if (!inFocus(e.from) && !inFocus(e.to)) continue;
     const a = visibleOf(e.from, exp), b = visibleOf(e.to, exp);
     if (a === b) continue;
     const k = a + "\u0000" + b;
@@ -259,7 +290,7 @@ function autoZoom() {
   expanded = new Set([""]);
   for (;;) {
     const visible = frontier();
-    const cands = visible.map((p) => nodes.get(p)).filter((n) => n && n.children.length)
+    const cands = visible.filter((p) => inFocus(p) && p !== focus).map((p) => nodes.get(p)).filter((n) => n && n.children.length && !expanded.has(n.path))
       .map((n) => ({ n, s: score(n) })).filter((c) => c.s > 0).sort((a, b) => b.s - a.s);
     let done = true;
     for (const { n } of cands) {
@@ -298,7 +329,7 @@ function mermaidSource(withSame) {
   const L = ["flowchart LR"]; const cls = [];
   const shownEdges = visibleEdges(withSame);
   const edgeEnds = new Set(shownEdges.flatMap((g) => [g.from, g.to]));
-  function nodeLine(p, indent) {
+  function nodeLine(p, indent, outside = false) {
     const id = idOf(p);
     if (p.endsWith("/…")) {
       const parent = nodes.get(p.slice(0, -2));
@@ -309,11 +340,14 @@ function mermaidSource(withSame) {
     }
     const n = nodes.get(p);
     const c = n.contracts.length ? ` <small>◆${n.contracts.length}</small>` : "";
-    const text = (libOf.has(n.path) ? label(n) : esc(label(n))) + fmt(n) + c;
+    const name = outside && n.depth > 1 ? esc(n.path) : libOf.has(n.path) ? label(n) : esc(label(n));
+    const text = name + fmt(n) + c;
     L.push(isExt(p) ? `${indent}${id}[("${text}")]` : `${indent}${id}["${text}"]`);
     if (libOf.has(p)) { cls.push(`class ${id} lib${n.churn ? "chg" : ""}`); return; }
     cls.push(`class ${id} ${n.status === "add" ? "added" : n.status === "del" ? "removed" : n.status === "move" ? "moved" : n.churn ? "changed" : "plain"}`);
   }
+  const focused = focus ? node(focus) : null;
+  if (focused) L.push(`  subgraph ${idOf(focus)}["${libOf.has(focus) ? label(focused) : esc(focus.includes("/") ? focus : label(focused))}${fmt(focused)}"]`);
   (function walk(n, indent) {
     for (const c of shownChildren(n)) {
       if (expanded.has(c.path) && c.children.length) {
@@ -325,7 +359,12 @@ function mermaidSource(withSame) {
       } else nodeLine(c.path, indent);
     }
     if (hasMore(n)) nodeLine(moreId(n), indent);
-  })(root, "  ");
+  })(focused ?? root, focused ? "    " : "  ");
+  if (focused) {
+    L.push("  end");
+    cls.push(`class ${idOf(focus)} focus`);
+    for (const p of boundaryNodes()) if (edgeEnds.has(p)) nodeLine(p, "  ", true);
+  }
   const styles = [];
   let i = 0;
   for (const g of shownEdges) {
@@ -347,6 +386,7 @@ function mermaidSource(withSame) {
   L.push("  classDef moved fill:#3b6fd826,stroke:#3b6fd8,stroke-width:2px");
   L.push("  classDef more fill:transparent,stroke:#9a9ea6,stroke-dasharray:3 3,color:#9a9ea6");
   L.push("  classDef group fill:#9a9ea60d,stroke:#9a9ea6");
+  L.push("  classDef focus fill:transparent,stroke:#3b6fd8,stroke-width:2px");
   L.push("  classDef gadded fill:#1f9d550d,stroke:#1f9d55,stroke-width:2px");
   return [...L, ...cls.map((c) => "  " + c), ...styles.map((s) => "  " + s)].join("\n");
 }
@@ -358,8 +398,16 @@ function visibleEdges(withSame) {
     if (!visible.has(g.from) || !visible.has(g.to)) return false;
     if (g.s !== "same") return true;
     const systems = !g.from.includes("/") && !g.to.includes("/");
-    return withSame && (g.add || g.del || systems || (touched(g.from) && touched(g.to)));
+    // Zoomed in, the block's own wiring is the point, changed or not.
+    const zoomedIn = focus && (inFocus(g.from) || inFocus(g.to));
+    return withSame && (g.add || g.del || systems || zoomedIn || (touched(g.from) && touched(g.to)));
   });
+}
+
+// Big graphs shrink to the panel; small ones are not blown up past a readable size.
+function fitWidth(el) {
+  const svg = el.querySelector("svg"), w = svg?.viewBox.baseVal?.width;
+  if (w) svg.style.width = Math.min(1.25 * w, el.clientWidth - 26) + "px";
 }
 
 let renderSeq = 0;
@@ -371,15 +419,61 @@ async function render() {
   const { svg, bindFunctions } = await mermaid.render("m" + ++renderSeq, src);
   const el = document.getElementById("diagram");
   el.innerHTML = svg;
+  fitWidth(el);
   bindFunctions?.(el);
   el.querySelectorAll("g.node, g.cluster").forEach((g) => {
     const m = (g.id || "").match(/(?:^|[-_])(n\d+)(?:[-_]|$)/) || (g.id || "").match(/^(n\d+)$/);
     const path = m && byId.get(m[1]);
     if (path == null) return;
-    g.addEventListener("click", (ev) => { ev.stopPropagation(); path.startsWith("sys:") ? selectSys(path.slice(4)) : toggle(path); });
+    g.addEventListener("click", (ev) => { ev.stopPropagation(); path.startsWith("sys:") ? selectSys(path.slice(4)) : activate(path, ev.shiftKey); });
   });
   renderTree();
+  renderCrumbs();
 }
+
+// Click zooms into a block; shift-click opens it in place. A leaf is selected,
+// zooming out to its parent first if it is not on the canvas.
+function activate(path, inPlace = false) {
+  if (path.endsWith("/…")) { select(path.slice(0, -2)); return; }
+  const n = nodes.get(path);
+  if (path === focus) { select(path); return render(); }
+  if (n.children.length && !(inPlace && inFocus(path))) return zoom(path, path);
+  if (!inFocus(path) && !n.children.length) return zoom(n.parent?.path ?? "", path);
+  toggle(path);
+}
+
+function zoom(path, sel = path) {
+  if (path !== focus) {
+    focus = path;
+    const url = new URL(location.href);
+    path ? url.searchParams.set("focus", path) : url.searchParams.delete("focus");
+    history.pushState({ focus: path }, "", url);
+  }
+  autoZoom();
+  if (sel != null) select(sel); else document.getElementById("detail").innerHTML = "";
+  render();
+}
+addEventListener("popstate", () => {
+  focus = new URLSearchParams(location.search).get("focus") ?? "";
+  if (focus && !nodes.has(focus)) focus = "";
+  autoZoom(); render();
+});
+
+function renderCrumbs() {
+  const el = document.getElementById("crumbs");
+  if (!focus) { el.innerHTML = ""; return; }
+  const parts = focus.split("/");
+  const links = [`<a data-focus="">Whole system</a>`, ...parts.map((p, i) => {
+    const path = parts.slice(0, i + 1).join("/");
+    const text = i === 0 ? (D.systems[path] ?? p) : p;
+    return i === parts.length - 1 ? `<b>${text}</b>` : `<a data-focus="${path}">${text}</a>`;
+  })];
+  el.innerHTML = links.join('<span class="sep">›</span>');
+}
+document.getElementById("crumbs").onclick = (ev) => {
+  const f = ev.target.closest("[data-focus]");
+  if (f) zoom(f.dataset.focus, f.dataset.focus || null);
+};
 
 function toggle(path) {
   if (path.endsWith("/…")) { select(path.slice(0, -2)); return; }
@@ -414,14 +508,21 @@ function renderTree() {
     for (const c of shownChildren(n).filter(interesting)) {
       const li = document.createElement("li");
       li.style.paddingLeft = (c.depth - 1) * 12 + "px";
-      const open = expanded.has(c.path) && c.children.length;
+      const open = (expanded.has(c.path) || inFocus(focus, c.path)) && c.children.length;
       li.innerHTML = `<span class="tw">${c.children.length ? (open ? "▾" : "▸") : ""}</span><span class="${c.status === "add" ? "add" : c.status === "del" ? "del" : ""}">${label(c)}</span><span class="ct">${c.add || c.del ? `<span class="add">+${c.add}</span> <span class="del">−${c.del}</span>` : c.edgeTouch ? "edges" : ""}</span>`;
       if (c.path === selected) li.classList.add("sel");
-      li.onclick = () => toggle(c.path);
+      li.onclick = (ev) => activate(c.path, ev.shiftKey);
       ul.appendChild(li);
       if (open) walk(c);
     }
   })(root);
+}
+
+function commonParent(a, b) {
+  const pa = a.split("/"), pb = b.split("/");
+  let i = 0;
+  while (i < pa.length - 1 && i < pb.length - 1 && pa[i] === pb[i]) i++;
+  return pa.slice(0, i).join("/");
 }
 
 function renderStatic() {
@@ -454,7 +555,7 @@ function renderStatic() {
     (moves.length ? `<b>Moved</b><ul style="margin-bottom:8px">${moves.join("")}</ul>` : "") +
     (units.length ? `<b>Units added / removed</b><ul style="margin-bottom:8px">${units.join("")}</ul>` : "") + (h
     ? `<b>Structural change at ${lvl(h.level)}</b><ul>${h.hits.slice(0, 8).map((g) =>
-        `<li class="${g.add ? "add" : "del"}">${g.add ? "+" : "−"} ${disp(g.a)} → ${disp(g.b)}</li>`).join("")}${h.hits.length > 8 ? `<li class="sub">… and ${h.hits.length - 8} more</li>` : ""}</ul>`
+        `<li class="${g.add ? "add" : "del"}" data-focus="${commonParent(g.a, g.b)}" title="Zoom in">${g.add ? "+" : "−"} ${disp(g.a)} → ${disp(g.b)}</li>`).join("")}${h.hits.length > 8 ? `<li class="sub">… and ${h.hits.length - 8} more</li>` : ""}</ul>`
     : `<b>No dependency changes</b><span class="sub">${D.contracts.length ? "Contract surface changed, see below." : "Internal edits only: a line-level review is enough."}</span>`);
   document.getElementById("contracts").innerHTML = D.contracts.map((c) =>
     `<li class="${c.s}">${c.s === "add" ? "+" : "−"} ${c.kind} ${c.name}<br><span class="sub">${c.node ?? ""}</span></li>`).join("") || '<li class="sub">none</li>';
@@ -472,7 +573,11 @@ function renderStatic() {
 }
 
 document.getElementById("auto").onclick = () => { autoZoom(); render(); };
-document.getElementById("l0").onclick = () => { expanded = new Set([""]); render(); };
+document.getElementById("l0").onclick = () => { if (focus) zoom("", null); else { expanded = new Set([""]); render(); } };
+document.getElementById("headline").onclick = (ev) => {
+  const f = ev.target.closest("[data-focus]");
+  if (f) { setTab("code"); zoom(f.dataset.focus, f.dataset.focus || null); }
+};
 document.getElementById("budget").oninput = (e) => { budget = +e.target.value; document.getElementById("budgetv").textContent = budget; autoZoom(); render(); };
 document.getElementById("same").onchange = render;
 document.getElementById("src").onclick = () => { const p = document.getElementById("mmd"); p.hidden = !p.hidden; };
@@ -582,6 +687,7 @@ async function renderSystem() {
   document.getElementById("mmd").textContent = src;
   const { svg } = await mermaid.render("s" + ++renderSeq, src);
   el.innerHTML = svg;
+  fitWidth(el);
   el.querySelectorAll("g.node").forEach((g) => {
     const m = (g.id || "").match(/(?:^|[-_])(n\d+)(?:[-_]|$)/);
     const path = m && byId.get(m[1]);
@@ -634,7 +740,7 @@ function selectSys(key) {
   document.getElementById("toCode")?.addEventListener("click", (ev) => {
     ev.preventDefault();
     for (const a of ancestors(t.unit).slice(1)) expanded.add(a.path);
-    setTab("code"); select(t.unit);
+    setTab("code"); activate(t.unit);
   });
 }
 
@@ -700,6 +806,7 @@ const params = new URLSearchParams(location.search);
 renderStatic();
 setApp(params.get("app") ?? ranked[0]?.name);
 if (SYS) appSel.value = SYS.name;
+if (nodes.has(params.get("focus") ?? "")) focus = params.get("focus") ?? "";
 autoZoom();
 setTab(params.get("tab") === "system" ? "system" : "code");
 if (params.get("select")) selectSys(params.get("select"));
