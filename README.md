@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: JitterCompany/archdiff@v0.1.2
+      - uses: JitterCompany/archdiff@v0.1.3
         with:
           site: archdiff.example.com
           name: my-repo

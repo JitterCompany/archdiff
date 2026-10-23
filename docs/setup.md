@@ -134,7 +134,7 @@ jobs:
       # - uses: webfactory/ssh-agent@v0.10.0
       #   with:
       #     ssh-private-key: ${{ secrets.YOUR_DEPLOY_KEY }}
-      - uses: JitterCompany/archdiff@v0.1.2
+      - uses: JitterCompany/archdiff@v0.1.3
         with:
           site: <domain>
           name: <repo>
