@@ -38,6 +38,7 @@ runs:
         PYTHONPATH: ${{ github.action_path }}
         PR: ${{ github.event.pull_request.number }}
         TITLE: ${{ github.event.pull_request.title }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         SITE: ${{ inputs.site }}
@@ -47,6 +48,7 @@ runs:
         mkdir -p "$RUNNER_TEMP/archdiff"
         python3 -m archdiff "$base" "$HEAD_SHA" \
           --title "#$PR $TITLE" \
+          --title-url "$PR_URL" \
           --out "$RUNNER_TEMP/archdiff/index.html" \
           --summary "$RUNNER_TEMP/archdiff-summary.md" \
           --link "https://$SITE/$NAME/pr-$PR/"

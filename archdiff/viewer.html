@@ -22,6 +22,7 @@
   aside { border-right: 1px solid var(--line); background: var(--panel); padding: 18px 16px; overflow: auto; max-height: 100vh; position: sticky; top: 0; }
   main { padding: 16px; overflow: auto; }
   h1 { font-size: 17px; margin: 0 0 2px; }
+  h1 a { color: inherit; text-decoration: none; } h1 a:hover { text-decoration: underline; }
   h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; font-weight: 600; }
   .sub { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
   .headline { border-left: 3px solid var(--accent); padding: 8px 10px; background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 0 6px 6px 0; margin-top: 14px; }
@@ -424,7 +425,15 @@ function renderTree() {
 }
 
 function renderStatic() {
-  document.getElementById("title").textContent = D.title || "Architecture diff";
+  const h1 = document.getElementById("title");
+  h1.textContent = D.title || "Architecture diff";
+  if (/^https?:\/\//.test(D.title_url ?? "")) {
+    const a = document.createElement("a");
+    a.href = D.title_url;
+    a.textContent = h1.textContent;
+    a.title = "Open the pull request";
+    h1.replaceChildren(a);
+  }
   document.title = D.title || "Architecture Diff";
   document.getElementById("revs").textContent = `${D.base} → ${D.head}`;
   const h = headline();

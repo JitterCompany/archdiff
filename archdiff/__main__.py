@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--repo", default=".", help="repository to analyse (default: current directory)")
     ap.add_argument("--config", help="config file (default: <repo>/archdiff.toml)")
     ap.add_argument("--title", default="")
+    ap.add_argument("--title-url", help="link for the title, e.g. the pull request")
     ap.add_argument("--out", help="HTML output file")
     ap.add_argument("--json", help="also write the extracted data as JSON")
     ap.add_argument("--summary", help="also write a markdown summary, e.g. for a PR comment")
@@ -29,6 +30,7 @@ def main():
 
     cfg = config.load(args.config or Path(args.repo) / "archdiff.toml")
     data = build(args.repo, args.base, args.head, cfg, args.title)
+    data["title_url"] = args.title_url
     if args.json:
         Path(args.json).write_text(json.dumps(data, indent=1))
     if args.out:
